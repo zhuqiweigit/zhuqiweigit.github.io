@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.4.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"zhuqiweigit.github.io","root":"/","scheme":"Mist","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="MIT6.824分布式原理的课程lab，这篇文章记录lab3的详情。 lab3的实验分为两个任务，一是基于lab2完成的raft协议，完成一个不带日志压缩的 Key Value Service系统；二是在已经搭建好的Key Value Service上实现日志压缩(也即 snapshot)。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="lab3-Fault tolerant Key&#x2F;Value Service">
+<meta property="og:url" content="https://zhuqiweigit.github.io/2021/04/19/lab3-Fault-tolerant-Key-Value-Service/index.html">
+<meta property="og:site_name" content="ZhuQiwei&#39;s Blog">
+<meta property="og:description" content="MIT6.824分布式原理的课程lab，这篇文章记录lab3的详情。 lab3的实验分为两个任务，一是基于lab2完成的raft协议，完成一个不带日志压缩的 Key Value Service系统；二是在已经搭建好的Key Value Service上实现日志压缩(也即 snapshot)。">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://zhuqiweigit.github.io/2021/04/19/images/kv-Service.jpg">
+<meta property="og:image" content="https://zhuqiweigit.github.io/2021/04/19/images/snapshot.png">
+<meta property="og:image" content="https://zhuqiweigit.github.io/2021/04/19/images/snapshotRPC.png">
+<meta property="og:image" content="https://zhuqiweigit.github.io/2021/04/19/images/snapshotServiceRaft.png">
+<meta property="og:image" content="https://zhuqiweigit.github.io/2021/04/19/images/lab3A.png">
+<meta property="og:image" content="https://zhuqiweigit.github.io/2021/04/19/images/lab3B.png">
+<meta property="article:published_time" content="2021-04-19T06:51:10.000Z">
+<meta property="article:modified_time" content="2021-04-23T14:30:31.902Z">
+<meta property="article:author" content="ZhuQiwei">
+<meta property="article:tag" content="go">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://zhuqiweigit.github.io/2021/04/19/images/kv-Service.jpg">
+
+<link rel="canonical" href="https://zhuqiweigit.github.io/2021/04/19/lab3-Fault-tolerant-Key-Value-Service/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'en'
+  };
+</script>
+
+  <title>lab3-Fault tolerant Key/Value Service | ZhuQiwei's Blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="Toggle navigation bar">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">ZhuQiwei's Blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>Home</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>Tags</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>Categories</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>Archives</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>Search
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="Searching..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="en">
+    <link itemprop="mainEntityOfPage" href="https://zhuqiweigit.github.io/2021/04/19/lab3-Fault-tolerant-Key-Value-Service/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="ZhuQiwei">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="ZhuQiwei's Blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          lab3-Fault tolerant Key/Value Service
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">Posted on</span>
+
+              <time title="Created: 2021-04-19 14:51:10" itemprop="dateCreated datePublished" datetime="2021-04-19T14:51:10+08:00">2021-04-19</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">Edited on</span>
+                <time title="Modified: 2021-04-23 22:30:31" itemprop="dateModified" datetime="2021-04-23T22:30:31+08:00">2021-04-23</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">In</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>MIT6.824分布式原理的课程lab，这篇文章记录lab3的详情。</p>
+<p>lab3的实验分为两个任务，一是基于lab2完成的raft协议，完成一个不带日志压缩的 Key Value Service系统；二是在已经搭建好的Key Value Service上实现日志压缩(也即 snapshot)。</p>
+<span id="more"></span>
+
+<h2 id="Key-value-service-without-log-compaction"><a href="#Key-value-service-without-log-compaction" class="headerlink" title="Key/value service without log compaction"></a>Key/value service without log compaction</h2><p>Key Value Service 由客户端和服务端组成，其中客户端处于用户的机器上，服务端和它底层的raft处于服务器上，并且每个服务端与对应的raft处于同一个机器，即raft作为底层，负责一致性，而服务端处于上层，负责接受从客户端发来的请求并结合raft的反馈对状态机做相应的修改。</p>
+<p>通常，集群由n个服务端组成，只有一个服务端对应的底层raft为leader，也即只有这个服务端是leader。客户端的交互对象就是这个leader服务端。客户端发过来一个command给leader服务端，然后leader服务端把这条command拿去给集群内的follower达成共识，然后commit，一旦commit后，leader就可以把这个command执行（应用）到自己的状态机。</p>
+<p>在客户端看来，就好像服务端并没有分布式集群，它仅仅是在和leader进行交互。</p>
+<p>具体到本次lab，服务端负责维护的是一个kv数据库，在lab中我们将其简化为一个map[string] string。服务端需要处理三种请求：</p>
+<ul>
+<li>GET(key)：负责接受一个key，并查询其对应的value，如果没有找到，就返回空字符串。</li>
+<li>PUT(key,value)：接受kv pair，并将其放入kv数据库。(如果以前有，就覆盖，如果以前没有，就新增)</li>
+<li>APPEND(key,value)：接受kv pair，并将其append到数据库。(以前有，就将新value追加在旧value后面，以前没有，就直接新增)</li>
+</ul>
+<p>需要注意的是，<strong>Raft需要实现线性化语义</strong>。即作为客户端，只有在成功收到本次command的结果后，才会发起下一次command。不会出现一次性并行发送n条command，然后分别等待它们的结果的情况。</p>
+<h3 id="客户端设计"><a href="#客户端设计" class="headerlink" title="客户端设计"></a>客户端设计</h3><p>客户端应该向集群中的leader发送command，但刚开始发送Get、Put之类的时候，它并不知道谁是leader。因此可以采用轮询的策略，当对方不是leader是，客户端会收到 ErrWrongLeader 的错误，这时它就可以向下一个节点发送这条命令了。</p>
+<p>raft的线性化语义也必须在客户端得到实现，即：客户端在本条指令未得到结果前不会立刻return。比如下面的Get方法，如果网络拥塞导致超时，那就等待一个时间段然后重试；如果是错误的leader，就重新定位到下一个集群节点，并发送请求；如果是服务端超时，则可能是定位到了partition的leader上，导致command迟迟无法commit，也需要换一个节点发送请求；直到收到正确的结果后才return</p>
+<p>另外，对于同一条command，客户端可能会在网络中发送不止一条，所以需要给command编号。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(ck *Clerk)</span> <span class="title">Get</span><span class="params">(key <span class="keyword">string</span>)</span> <span class="title">string</span></span> &#123;</span><br><span class="line">  </span><br><span class="line">	request := GetArgs&#123;Key: key, ClientId: ck.clientId, OperationId: ck.operationId&#125;</span><br><span class="line">	ck.operationId++</span><br><span class="line">	<span class="keyword">for</span> &#123;</span><br><span class="line">		response := GetReply&#123;&#125;</span><br><span class="line">		ok := ck.servers[ck.leaderId].Call(<span class="string">&quot;KVServer.Get&quot;</span>, &amp;request, &amp;response)</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> ok == <span class="literal">false</span> &#123;</span><br><span class="line">			ck.leaderId = (ck.leaderId + <span class="number">1</span>) % <span class="built_in">len</span>(ck.servers)</span><br><span class="line">			time.Sleep(RetrySendReqTimeMs)</span><br><span class="line">			<span class="keyword">continue</span></span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> response.Err == ErrNoKey &#123;</span><br><span class="line">			<span class="keyword">return</span> <span class="string">&quot;&quot;</span></span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> response.Err == ErrWrongLeader &#123;</span><br><span class="line">			ck.leaderId = (ck.leaderId + <span class="number">1</span>) % <span class="built_in">len</span>(ck.servers)</span><br><span class="line">			<span class="keyword">continue</span></span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> response.Err == ErrRaftTimeout &#123;</span><br><span class="line">			<span class="comment">//超时，maybe定位到了partition的旧leader上</span></span><br><span class="line">			ck.leaderId = (ck.leaderId + <span class="number">1</span>) % <span class="built_in">len</span>(ck.servers)</span><br><span class="line">			<span class="keyword">continue</span></span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> response.Err == OK &#123;</span><br><span class="line">			<span class="keyword">return</span> response.Value</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			log.Fatal(<span class="string">&quot;wrong GET reply args&quot;</span>)</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="string">&quot;&quot;</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="服务端设计"><a href="#服务端设计" class="headerlink" title="服务端设计"></a>服务端设计</h3><p>服务端接收从客户端发来的command，并把command通过Start交给raft层。如果raft发现自己不是leader，就会拒绝这个command，并return false，服务端得到false后需要将 ErrWrongLeader 错误反馈给客户端。</p>
+<p>如果start成功，则说明command已经交给raft层，由raft层负责达成共识。在达成共识后会通知服务端，服务端就可以apply或者说执行这条command了。</p>
+<p>由于考虑到效率问题，整个过程应该是并发的，而考虑到raft层达成一致需要一段时间，因此start 一条command、执行command、反馈结果给客户端 这三个过程应该是异步的。</p>
+<img src="../images/kv-Service.jpg" alt="kv-Service" style="zoom:60%;" />
+
+<p>如上图所示，当一个command到达服务端的RPC接口后，服务端将command交给raft层的start函数，并启动一个定时器，然后等待结果。raft层在达成一致后，会把command写入raft.applyCh。服务端的apply Loop收到通知后，开始执行这条command并把结果应用到自己的数据库中。并把结果通过service.applyCh通知到RPC接口，RPC接口收到通知后，返回结果给客户端。如果RPC接口函数迟迟得不到通知，超时定时器就会到期，此时接口函数直接给客户端返回ErrRaftTimeout错误。</p>
+<p>图中的raft.applyCh只有一个，用于raft层向service层通知。而service.applyCh有多个，即每次RPC请求，就新创建一个，用于服务端的service Loop向服务端的RPC接口函数通知command结果。 </p>
+<p>可以看到，raft层只是用来达成一致的，当它认为集群中过半数的节点都同步了某条指令，它就会使用applyCh把它通知给Service层，告诉service层，你可以放心的执行这条command了。</p>
+<p><strong>序列号：</strong>客户端有可能会重发某条指令（比如网络拥塞导致客户端主动重发）这就要保证重发的指令不能被又一次执行，必须返回上次执行过的结果。解决办法就是给command编号，具体来说，使用&lt;clientId, commandId&gt; pair来标识每一条command，其中clientId表示客户端的识别号，commandId表示指令的Id，指令Id是递增的。服务端记录自己最近已经apply到了哪一条指令，当有新指令需要处理时，先检查它的序列号Id是否小于自己上一次处理过的，如果小于，则说明这条指令已经处理过了，直接给用户回复Ok即可(丢弃也行，因为既然更大的command都已经处理过了，说明之前的command用户早已收到结果了)。</p>
+<h2 id="Key-value-service-with-snapshots"><a href="#Key-value-service-with-snapshots" class="headerlink" title="Key/value service with snapshots"></a>Key/value service with snapshots</h2><p>partB要求在key value Service 的基础上完成快照功能。</p>
+<img src="../images/snapshot.png" alt="snapshot" style="zoom:60%;" />
+
+<img src="../images/snapshotRPC.png" alt="snapshotRPC" style="zoom:60%;" />
+
+<p>在正常运行的过程中，raft会将自己的log持久化，当系统崩溃并重启后，由于没有持久化service层的状态机，所以整个系统都是0状态，因此raft会将自己的commitIdx和applyIdx(这两个数据不需要持久化)重置为0，并从第一条log开始重新执行到最新的log位置。这会浪费大量的时间，并且为了恢复状态，需要保存从系统开机到当前的所有log，这是很占存储空间的。</p>
+<p>快照snapshot解决了这个问题，即在某个时间节点把service层的状态机的数据全部保存一份(在这里就是service层的kv数据库)，当系统崩溃重启后，只需要先把snapshot恢复到service层，然后再依次执行快照时间点之后的所有log。</p>
+<img src="../images/snapshotServiceRaft.png" alt="snapshotServiceRaft" style="zoom:60%;" />
+
+<p>整个快照机制如上图所示(图来自6.824实验的主页)。</p>
+<h3 id="建立快照"><a href="#建立快照" class="headerlink" title="建立快照"></a>建立快照</h3><p>每个节点都会建立自己的快照，包括leader和follower。</p>
+<p>service层会定期检测raft层保存在硬盘中的持久化数据的大小(主要是log太占空间)，一旦发现持久化数据文件超过了某个大小，就启动快照机制。service层首先将自己维护的数据库序列化，然后通知raft层将raft层的日志截断，丢弃截断的前面的log。从哪里截断呢？应该从service层保存自己快照的最后一条log截断。之后，将service层序列化的数据和raft层的需要持久化的一些状态一起写入硬盘。建立快照就ok了。</p>
+<p>service层需要持久化的数据（写入快照的数据）：自己的数据库、lastApplyIndex、lastApplyTerm、recentApplyOpId</p>
+<p>raft层需要持久化的数据和lab2一样，仍然是那些</p>
+<h3 id="发送快照"><a href="#发送快照" class="headerlink" title="发送快照"></a>发送快照</h3><p>快照的发送由leader到follower。通常发生在leader发送心跳数据(包括append log)时，leader发现follower的log落后于leader太远时，会把自己的快照发送给follower。</p>
+<p>具体到代码实现上，leader平时使用nextIndex数组来和follower协商，下次发送从哪里开始的log。当leader发现，nextIndex数组已经匹配到自己已经抛弃的log的index时(这些log在建立好快照后被抛弃)，就需要发送snapshot数据而非发送log数据。具体的RPC参数可见原论文的图。</p>
+<h3 id="安装快照"><a href="#安装快照" class="headerlink" title="安装快照"></a>安装快照</h3><p>安装快照涉及到service层和raft层的互动，比较麻烦。</p>
+<p>首先由Leader向follower发送快照数据。follower收到这些数据后，向service层的applyCh写入一条通知，通知的内容就是需要安装快照。然后service层首先调用raft层的condInstallSnapshot，让raft判断是否安装这个快照（如果raft层已经拥有这个快照的状态对应的最后一条log，或者raft层已经有比它更新的快照），就不用安装这个快照。否则，需要安装快照。raft层需要将applyIndex设置为快照状态对应的最后一条log的index，然后返回true。service层收到true后，将快照读取，并利用读取的数据重置自己的状态。</p>
+<p>全过程中，raft需要重置的数据，是applyIndex。而commitIndex不用重置，因为commitIndex是从leader处获得的。</p>
+<h2 id="一些bug"><a href="#一些bug" class="headerlink" title="一些bug"></a>一些bug</h2><ol>
+<li>channel不能加锁。这个和RPC调用不能加锁一样，channel加锁可能导致死锁。不知道为什么前几次实验都通过了，这个bug一直到lab3才暴露出来。</li>
+</ol>
+<h2 id="实验结果"><a href="#实验结果" class="headerlink" title="实验结果"></a>实验结果</h2><img src="../images/lab3A.png" alt="lab3A" style="zoom:40%;" />
+
+<img src="../images/lab3B.png" alt="lab3B" style="zoom:40%;" />
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/go/" rel="tag"># go</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/04/13/lab2-raft/" rel="prev" title="lab2-raft">
+      <i class="fa fa-chevron-left"></i> lab2-raft
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2021/05/15/lab4-Sharded-Key-Value-Service/" rel="next" title="lab4-Sharded Key/Value Service">
+      lab4-Sharded Key/Value Service <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          Table of Contents
+        </li>
+        <li class="sidebar-nav-overview">
+          Overview
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#Key-value-service-without-log-compaction"><span class="nav-number">1.</span> <span class="nav-text">Key&#x2F;value service without log compaction</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%AE%A2%E6%88%B7%E7%AB%AF%E8%AE%BE%E8%AE%A1"><span class="nav-number">1.1.</span> <span class="nav-text">客户端设计</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9C%8D%E5%8A%A1%E7%AB%AF%E8%AE%BE%E8%AE%A1"><span class="nav-number">1.2.</span> <span class="nav-text">服务端设计</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Key-value-service-with-snapshots"><span class="nav-number">2.</span> <span class="nav-text">Key&#x2F;value service with snapshots</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%BB%BA%E7%AB%8B%E5%BF%AB%E7%85%A7"><span class="nav-number">2.1.</span> <span class="nav-text">建立快照</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%8F%91%E9%80%81%E5%BF%AB%E7%85%A7"><span class="nav-number">2.2.</span> <span class="nav-text">发送快照</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%AE%89%E8%A3%85%E5%BF%AB%E7%85%A7"><span class="nav-number">2.3.</span> <span class="nav-text">安装快照</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%80%E4%BA%9Bbug"><span class="nav-number">3.</span> <span class="nav-text">一些bug</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%9E%E9%AA%8C%E7%BB%93%E6%9E%9C"><span class="nav-number">4.</span> <span class="nav-text">实验结果</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">ZhuQiwei</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">6</span>
+          <span class="site-state-item-name">posts</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">categories</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-name">tags</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2021</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">ZhuQiwei</span>
+</div>
+  <div class="powered-by">Powered by <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://mist.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Mist</a>
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/pjax/pjax.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+  <script>
+var pjax = new Pjax({
+  selectors: [
+    'head title',
+    '#page-configurations',
+    '.content-wrap',
+    '.post-toc-wrap',
+    '.languages',
+    '#pjax'
+  ],
+  switches: {
+    '.post-toc-wrap': Pjax.switches.innerHTML
+  },
+  analytics: false,
+  cacheBust: false,
+  scrollTo : !CONFIG.bookmark.enable
+});
+
+window.addEventListener('pjax:success', () => {
+  document.querySelectorAll('script[data-pjax], script#page-configurations, #pjax script').forEach(element => {
+    var code = element.text || element.textContent || element.innerHTML || '';
+    var parent = element.parentNode;
+    parent.removeChild(element);
+    var script = document.createElement('script');
+    if (element.id) {
+      script.id = element.id;
+    }
+    if (element.className) {
+      script.className = element.className;
+    }
+    if (element.type) {
+      script.type = element.type;
+    }
+    if (element.src) {
+      script.src = element.src;
+      // Force synchronous loading of peripheral JS.
+      script.async = false;
+    }
+    if (element.dataset.pjax !== undefined) {
+      script.dataset.pjax = '';
+    }
+    if (code !== '') {
+      script.appendChild(document.createTextNode(code));
+    }
+    parent.appendChild(script);
+  });
+  NexT.boot.refresh();
+  // Define Motion Sequence & Bootstrap Motion.
+  if (CONFIG.motion.enable) {
+    NexT.motion.integrator
+      .init()
+      .add(NexT.motion.middleWares.subMenu)
+      .add(NexT.motion.middleWares.postList)
+      .bootstrap();
+  }
+  NexT.utils.updateSidebarPosition();
+});
+</script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <div id="pjax">
+  
+
+  
+
+    </div>
+</body>
+</html>

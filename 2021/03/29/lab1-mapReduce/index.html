@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.4.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"zhuqiweigit.github.io","root":"/","scheme":"Mist","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="最近开始学习MIT的分布式课程，首先做了lab1。 lab1的内容是mapReduce，关键有两部分，一是理解mapReduce的原理，二是实现分布式的mapReduce。 以下内容也从这两部分着手">
+<meta property="og:type" content="article">
+<meta property="og:title" content="lab1-mapReduce">
+<meta property="og:url" content="https://zhuqiweigit.github.io/2021/03/29/lab1-mapReduce/index.html">
+<meta property="og:site_name" content="ZhuQiwei&#39;s Blog">
+<meta property="og:description" content="最近开始学习MIT的分布式课程，首先做了lab1。 lab1的内容是mapReduce，关键有两部分，一是理解mapReduce的原理，二是实现分布式的mapReduce。 以下内容也从这两部分着手">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://zhuqiweigit.github.io/2021/03/29/images/mapreduce.jpg">
+<meta property="article:published_time" content="2021-03-29T13:14:32.000Z">
+<meta property="article:modified_time" content="2021-10-05T11:36:38.966Z">
+<meta property="article:author" content="ZhuQiwei">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://zhuqiweigit.github.io/2021/03/29/images/mapreduce.jpg">
+
+<link rel="canonical" href="https://zhuqiweigit.github.io/2021/03/29/lab1-mapReduce/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'en'
+  };
+</script>
+
+  <title>lab1-mapReduce | ZhuQiwei's Blog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="Toggle navigation bar">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">ZhuQiwei's Blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>Home</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>Tags</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>Categories</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>Archives</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>Search
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="Searching..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="en">
+    <link itemprop="mainEntityOfPage" href="https://zhuqiweigit.github.io/2021/03/29/lab1-mapReduce/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="ZhuQiwei">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="ZhuQiwei's Blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          lab1-mapReduce
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">Posted on</span>
+
+              <time title="Created: 2021-03-29 21:14:32" itemprop="dateCreated datePublished" datetime="2021-03-29T21:14:32+08:00">2021-03-29</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">Edited on</span>
+                <time title="Modified: 2021-10-05 19:36:38" itemprop="dateModified" datetime="2021-10-05T19:36:38+08:00">2021-10-05</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">In</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%88%86%E5%B8%83%E5%BC%8F/" itemprop="url" rel="index"><span itemprop="name">分布式</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>最近开始学习MIT的分布式课程，首先做了lab1。</p>
+<p>lab1的内容是mapReduce，关键有两部分，一是理解mapReduce的原理，二是实现分布式的mapReduce。</p>
+<p>以下内容也从这两部分着手</p>
+<span id="more"></span>
+
+<h2 id="MapReduce-的原理"><a href="#MapReduce-的原理" class="headerlink" title="MapReduce 的原理"></a>MapReduce 的原理</h2><p>下图是一个word count 程序在mapReduce上的原理图。本图仅仅涉及worker节点，master节点未画出。master节点主要起 给worker节点分配工作的作用。</p>
+<p><img src="../images/mapreduce.jpg" alt="mapreduce"></p>
+<p>顾名思义，mapReduce就是将<strong>可分割</strong>的任务划分成两个阶段完成</p>
+<ul>
+<li>map阶段将原始数据(如文件内容)拆分成了一个个key-value pair的形式</li>
+<li>reduce阶段将这些拥有相同key的pair聚集在一起，进行某种用户自定义的汇总运算。</li>
+</ul>
+<p>mapReduce 的例子</p>
+<ul>
+<li>单词计数：map函数将content拆分成 {word, “1”}的形式；reduce将聚集在一起的相同的word的进行频率计数，输出{word, “1023”}的形式</li>
+<li>倒排索引：由单词找文档。map函数将{docName, content} 拆分为 {word, docName}的list；reduce将聚集在一起的相同的word，的对应的docName进行排序并汇总</li>
+</ul>
+<h2 id="分布式的MapReduce"><a href="#分布式的MapReduce" class="headerlink" title="分布式的MapReduce"></a>分布式的MapReduce</h2><h3 id="1-master"><a href="#1-master" class="headerlink" title="1. master"></a>1. master</h3><p>分布式的MapReduce采用C/S的模式，其中master作为服务端，worker节点作为客户端。即分布式MapReduce的运行模式为：worker节点通过RPC不断向master节点请求任务，master节点根据自己的数据结构记录的任务情况来给worker节点分配任务(通过RPC返回任务的meta description)。worker节点获取任务meta信息后，通过分布式文件系统获取文件，并完成任务的计算。</p>
+<p>Master的主要数据结构如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> Master <span class="keyword">struct</span> &#123;</span><br><span class="line">	<span class="comment">//待处理的n个文件</span></span><br><span class="line">	files []<span class="keyword">string</span></span><br><span class="line">	</span><br><span class="line">  <span class="comment">//map任务的meta描述，凭借这个来分配map任务</span></span><br><span class="line">	mapTasks   []Task</span><br><span class="line">	mapTaskPtr <span class="keyword">int</span></span><br><span class="line">  </span><br><span class="line">  <span class="comment">//reduce任务的meta描述，凭借这个来分配reduce任务</span></span><br><span class="line">	reduceTasks   []Task</span><br><span class="line">	reduceTaskPtr <span class="keyword">int</span></span><br><span class="line"></span><br><span class="line">  <span class="comment">//当前已完成的task计数，用于判断每个阶段的任务是否完成</span></span><br><span class="line">	mapCompleteCnt <span class="keyword">int</span></span><br><span class="line">	reduceCompleteCnt <span class="keyword">int</span></span><br><span class="line">	<span class="comment">//mutex互斥保护变量：RPC是并发的，因此需要互斥访问Master的meta data</span></span><br><span class="line">	mutex sync.Mutex</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>描述任务的数据结构如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> Task <span class="keyword">struct</span> &#123;</span><br><span class="line">  <span class="comment">//任务类型，分为：Map任务，Reduce任务，IDLE空闲任务</span></span><br><span class="line">	taskType_ <span class="keyword">int</span></span><br><span class="line"></span><br><span class="line">	taskId_ <span class="keyword">int</span></span><br><span class="line">	<span class="comment">//任务状态：待分配、已分配、已完成</span></span><br><span class="line">	taskState_ <span class="keyword">int</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>Master主要需要实现两个RPC接口供Worker调用：</p>
+<ul>
+<li>AskForTask：请求任务，该接口会根据任务分配和完成情况，返回一个task。具体来说，当所有map任务<strong>完成</strong>后，才可以继续分配reduce任务。如果所有map任务都已经分配出去，但并没有全部收到commit，说明部分map任务还在被执行，此时如果有worker请求任务，应该给它分配IDLE任务。</li>
+<li>CommitTask：提交任务，该接口会将一个已分配任务的状态改为已完成</li>
+</ul>
+<h3 id="2-worker"><a href="#2-worker" class="headerlink" title="2. worker"></a>2. worker</h3><p>worker作为客户端，不断调用Master提供的AskForTask请求任务，当获得一个任务后，就开始执行，执行完毕后调用CommitTask提交任务。然后循环继续请求新的任务。</p>
+<p>worker每次请求任务都是通过RPC，当RPC向Master节点发起连接时，如果连接失败，说明master损坏，or整个mapReduce任务已经完成且master已退出。此时worker也退出即可。</p>
+<p>worker执行任务的流程则如文章一开始画的图一样。</p>
+<h3 id="3-错误处理"><a href="#3-错误处理" class="headerlink" title="3. 错误处理"></a>3. 错误处理</h3><p>master故障：只需要将master节点的meta-data信息周期性写入磁盘，当master故障时，重启一个新节点并load这个meta-data即可继续执行master的功能。当然一般来说master是不允许有故障的，如果出现了故障，直接停止整个程序的运行，让用户检查故障也是一种方法</p>
+<p>worker故障：如果worker发生了故障，则worker的任务需要由其它worker重新完成</p>
+<ul>
+<li>master端：master分配一个任务给worker后，会启动一个协程来监控任务的完成情况。具体来说，可以设置一个定时器，当10s后检查该任务是否已经由worker提交，且任务的状态改为“已完成“。如果否，则说明worker可能存在故障，只需要将该任务从 “已分配”的状态改为“待分配”，即可。</li>
+<li>worker端：worker的任务提交必须是原子性的，即worker在运行中生成的文件是私有的，可以将其命名为temp文件。只有当任务完成后，才将temp文件改成标准命名的文件，使得其它worker节点可见，然后再向master节点commit任务。这样做的原因是，如果worker在执行任务的过程中直接使用标准命名的文件，当work节点挂掉后，其它work节点会重做该task，但此时出现了file name的冲突。</li>
+</ul>
+<h3 id="4-go编程的一些note"><a href="#4-go编程的一些note" class="headerlink" title="4. go编程的一些note"></a>4. go编程的一些note</h3><p>刚开始尝试go编程，记录一些go的语法</p>
+<ul>
+<li><p>RPC</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//1.RPC传递的struct的成员必须大写</span></span><br><span class="line"><span class="keyword">type</span> TaskRequest <span class="keyword">struct</span> &#123;</span><br><span class="line">	Pad <span class="keyword">string</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">//2.RPC的接口函数格式; 请求消息和返回消息通过函数参数传递，因此需要使用引用传递；返回值必须是error类型，若没有错误则返回nil</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(m *Master)</span> <span class="title">CommitTask</span><span class="params">(request *CommitRequest, response *CommitResponse)</span> <span class="title">error</span></span>&#123;</span><br><span class="line">  	<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>fmt 相关</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//1. %v可打印各种变量</span></span><br><span class="line">fmt.Printf(<span class="string">&quot;open file [%v] failed  %v&quot;</span>, fileName, err)</span><br><span class="line"></span><br><span class="line"><span class="comment">//2. Sprintf 格式化输出字符串</span></span><br><span class="line">str := fmt.Sprintf(<span class="string">&quot;tmp-mr-%v-%v&quot;</span>, mapTaskId, i)</span><br><span class="line"></span><br><span class="line"><span class="comment">//3. Sscanf 从字符串格式化读入数据; n表示读到了几个数据</span></span><br><span class="line">n, err := fmt.Sscanf(str, <span class="string">&quot;mr-%v-%v&quot;</span>, &amp;map_id, &amp;reduce_id)</span><br><span class="line"></span><br><span class="line"><span class="comment">//4. Fprintf 向文件中格式化输出数据</span></span><br><span class="line">fmt.Fprintf(filePtr, <span class="string">&quot;%v %v\n&quot;</span>, key, val)</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>json</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//1. 直接把struct数据写入到文件中，以json格式</span></span><br><span class="line">encoder := json.NewEncoder(filePtr)</span><br><span class="line">err := encoder.Encode(kvaStruct)</span><br><span class="line"></span><br><span class="line"><span class="comment">//2. 从文件中把json解码，并读入为struct</span></span><br><span class="line">decoder := json.NewDecoder(f)</span><br><span class="line"><span class="keyword">for</span> &#123;</span><br><span class="line">		kv := KeyValue&#123;&#125;</span><br><span class="line">		<span class="keyword">if</span> err := decoder.Decode(&amp;kv); err != <span class="literal">nil</span> &#123;</span><br><span class="line">			<span class="keyword">break</span></span><br><span class="line">		&#125;</span><br><span class="line">		kva = <span class="built_in">append</span>(kva, kv)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>读写文件相关</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//1.利用ioutil读文件，得到的buf类型为[]byte；readAll读入该文件所有的内容</span></span><br><span class="line">buf, err := ioutil.ReadAll(file)</span><br><span class="line"></span><br><span class="line"><span class="comment">//2.利用ioutil读取目录，得到的是每个文件的描述struct(不是文件指针，也不是fileName)</span></span><br><span class="line">allFilesDescription, err := ioutil.ReadDir(<span class="string">&quot;./&quot;</span>)</span><br><span class="line"><span class="keyword">for</span> _, fileDes := <span class="keyword">range</span> allFilesDescription &#123;</span><br><span class="line">  fileName := fileDes.Name()</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">//3. 利用filePtr.Read只能读取缓冲区大小的数据</span></span><br><span class="line">buf := <span class="built_in">make</span>([]<span class="keyword">byte</span>, <span class="number">1024</span>)</span><br><span class="line">n, err := filePtr.Read(buf)  <span class="comment">//读到的只是1024 bytes大小的数据，不会读完全文</span></span><br></pre></td></tr></table></figure>
+
+</li>
+</ul>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/02/23/hexo%20notes/" rel="prev" title="hexo notes">
+      <i class="fa fa-chevron-left"></i> hexo notes
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2021/04/13/lab2-raft/" rel="next" title="lab2-raft">
+      lab2-raft <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          Table of Contents
+        </li>
+        <li class="sidebar-nav-overview">
+          Overview
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#MapReduce-%E7%9A%84%E5%8E%9F%E7%90%86"><span class="nav-number">1.</span> <span class="nav-text">MapReduce 的原理</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%88%86%E5%B8%83%E5%BC%8F%E7%9A%84MapReduce"><span class="nav-number">2.</span> <span class="nav-text">分布式的MapReduce</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-master"><span class="nav-number">2.1.</span> <span class="nav-text">1. master</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-worker"><span class="nav-number">2.2.</span> <span class="nav-text">2. worker</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-%E9%94%99%E8%AF%AF%E5%A4%84%E7%90%86"><span class="nav-number">2.3.</span> <span class="nav-text">3. 错误处理</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-go%E7%BC%96%E7%A8%8B%E7%9A%84%E4%B8%80%E4%BA%9Bnote"><span class="nav-number">2.4.</span> <span class="nav-text">4. go编程的一些note</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">ZhuQiwei</p>
+  <div class="site-description" itemprop="description"></div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">6</span>
+          <span class="site-state-item-name">posts</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">categories</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-name">tags</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2021</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">ZhuQiwei</span>
+</div>
+  <div class="powered-by">Powered by <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://mist.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Mist</a>
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/pjax/pjax.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+  <script>
+var pjax = new Pjax({
+  selectors: [
+    'head title',
+    '#page-configurations',
+    '.content-wrap',
+    '.post-toc-wrap',
+    '.languages',
+    '#pjax'
+  ],
+  switches: {
+    '.post-toc-wrap': Pjax.switches.innerHTML
+  },
+  analytics: false,
+  cacheBust: false,
+  scrollTo : !CONFIG.bookmark.enable
+});
+
+window.addEventListener('pjax:success', () => {
+  document.querySelectorAll('script[data-pjax], script#page-configurations, #pjax script').forEach(element => {
+    var code = element.text || element.textContent || element.innerHTML || '';
+    var parent = element.parentNode;
+    parent.removeChild(element);
+    var script = document.createElement('script');
+    if (element.id) {
+      script.id = element.id;
+    }
+    if (element.className) {
+      script.className = element.className;
+    }
+    if (element.type) {
+      script.type = element.type;
+    }
+    if (element.src) {
+      script.src = element.src;
+      // Force synchronous loading of peripheral JS.
+      script.async = false;
+    }
+    if (element.dataset.pjax !== undefined) {
+      script.dataset.pjax = '';
+    }
+    if (code !== '') {
+      script.appendChild(document.createTextNode(code));
+    }
+    parent.appendChild(script);
+  });
+  NexT.boot.refresh();
+  // Define Motion Sequence & Bootstrap Motion.
+  if (CONFIG.motion.enable) {
+    NexT.motion.integrator
+      .init()
+      .add(NexT.motion.middleWares.subMenu)
+      .add(NexT.motion.middleWares.postList)
+      .bootstrap();
+  }
+  NexT.utils.updateSidebarPosition();
+});
+</script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <div id="pjax">
+  
+
+  
+
+    </div>
+</body>
+</html>
