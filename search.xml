@@ -30,6 +30,11 @@
 <li><p>动态加载图片</p>
 <p>在config中开启pjax</p>
 </li>
+<li><p>github 鉴权失败问题</p>
+<p>在 hexo 项目的根目录，修改 _config.yml ；将 repo 地址，从 https 协议改为 ssh</p>
+<figure class="highlight yml"><table><tr><td class="code"><pre><span class="line"><span class="attr">deploy:</span></span><br><span class="line">  <span class="attr">type:</span> <span class="string">git</span></span><br><span class="line">  <span class="attr">repo:</span> <span class="string">git@github.com:zhuqiweigit/zhuqiweigit.github.io</span></span><br><span class="line">  <span class="attr">branch:</span> <span class="string">master</span></span><br></pre></td></tr></table></figure>
+
+</li>
 </ul>
 ]]></content>
       <categories>
