@@ -361,4 +361,47 @@
         <tag>go</tag>
       </tags>
   </entry>
+  <entry>
+    <title>lab1-buffer pool</title>
+    <url>/2021/12/07/lab1-buffer-pool/</url>
+    <content><![CDATA[<p>最近一段时间科研任务 + 毕业论文 + 乱七八糟的事情，一直到现在才有空，继续 15-445 学习。</p>
+<p>Lab1 的任务是实现一个内存中的关于 DBMS 的 page 的缓存池，并且支持一些关于 page 的操作和管理。因为数据库中的基本单元 page 都存放在磁盘中，因此当需要访问时，我们需要将它 load 到内存的 buffer pool 中，当不需要时再将其写回。当然这个操作也可以由 mmap 完成，但课程中说到了我们需要避免 OS 接管，理由有若干：DBMS 知道什么时候是写回 dirty page 的最佳时机；DBMS 可以更好地支持预取；DBMS 的 Page 替换策略可以做到更好；DBMS 的线程调度；总的来说就是因为数据库中的 Page 对 OS 来说只是一块没有意义的文件，因此它只会把它当做一般文件来读入读出；而 DBMS 却了解这个文件的更多信息，借助这些信息可以更高效地 pool。</p>
+<h3 id="Task-1-LRU-REPLACEMENT-POLICY"><a href="#Task-1-LRU-REPLACEMENT-POLICY" class="headerlink" title="Task #1 - LRU REPLACEMENT POLICY"></a>Task #1 - LRU REPLACEMENT POLICY</h3><p>任务1需要我们完成一个基于 LRU 的 Frame 淘汰策略算法。整个 buffer pool 是一个固定大小的 Frame 数组，一个 Frame 只能缓存1页 Page。因此当 buffer pool 中的所有 Frame 都缓存了 Page，但此时还需要 load 新的 Page 时，就需要先写回到 disk 一些 Page，把对应的 Frame 空出来，然后再容纳新的 Page。我们要做的事情，就是追踪这些 Frame 的使用情况，当 Frame 都满，且需要空的 Frame 时，把最久不访问的 Frame 内的 Page 写回。</p>
+<p>具体地，我们需要实现一个 LruReplacer 类，这个类负责维护所有 unpin 的 Page 所在的 FrameId。当有一个 Page 被 Unpin 时(pin count 为0时会被 unpin)，我们将它所在的 Frame 的 FrameId 收纳进来，以表示此 Frame 可以被淘汰，而淘汰的时机就按照被 Unpin的先后顺序（用 unpin 的顺序代表最近被用过的顺序）。 </p>
+<p>Unpin函数调用时，向  LruReplacer 中添加一个 FrameId；Pin把  LruReplacer 中的 FrameId 移除，表示该 FrameId 不再是 可被换出的；Victim 表示根据 LRU 的策略选择一个 Frame 换出；</p>
+<p>具体实现方面，可以用一个双向链表表示 LRU 的节点，为了更快找到中间结点，可以用 hashMap 保存链表上每个节点的位置；还有一种办法可以只用哈希表，即 哈希表内的每个 value中，保存该元素的 pre 和 next，就能实现在哈希表上的双向链表。</p>
+<figure class="highlight cpp"><table><tr><td class="code"><pre><span class="line"><span class="built_in">std</span>::<span class="built_in">unordered_map</span>&lt;<span class="keyword">frame_id_t</span>, <span class="built_in">std</span>::<span class="built_in">list</span>&lt;<span class="keyword">frame_id_t</span>&gt;::iterator&gt; hash_table_;</span><br><span class="line"><span class="built_in">std</span>::<span class="built_in">list</span>&lt;<span class="keyword">frame_id_t</span>&gt; lru_link_list_;</span><br></pre></td></tr></table></figure>
+
+<p>最后，由于 Replacer 会被多个线程访问，因此需要 mutex 保护。LruReplacer 继承自虚基类 Replacer，看得出来后续实验我们可能会用到不止一种 Replacer，因此 lab 把 Replacer 做成了虚基类。</p>
+<h3 id="Task-2-BUFFER-POOL-MANAGER-INSTANCE"><a href="#Task-2-BUFFER-POOL-MANAGER-INSTANCE" class="headerlink" title="Task #2 - BUFFER POOL MANAGER INSTANCE"></a>Task #2 - BUFFER POOL MANAGER INSTANCE</h3><p>任务2需要实现核心类 BufferPoolManagerInstance。它负责把磁盘中的 Page 调入内存，存储在自己的缓冲池中。首先明确几个概念，</p>
+<ul>
+<li>frame：页框，内存中的一个位置，其大小可容纳一个 Page，可视为一个物理概念。一个 frame 的数组就构成了 buffer pool，frame 由 frame Id 标识，frame Id 即 frame 数组的 idx。</li>
+<li>Page：页，逻辑概念，Page 存放在 disk 中或者 内存中，由 buffer pool 负责调度。Page 内部有一些元信息，关键的有：pageId、pin count、dirty位</li>
+<li>PageTable：页表。负责记录<strong>在 buffer pool中</strong>的 Page 的位置信息(在哪个 Frame 中存储)</li>
+</ul>
+<p>frame 是容纳 page 的单位，我们以 frame 为中心分析 buffer pool 中页的状态。</p>
+<img src="../images/page_frame.png" alt="image-20211207205436894" style="zoom:50%;" />
+
+<p>buffer pool 维护了一个空闲链表，内容是所有空闲的 Frame 的id，因此空闲链表内的 Frame 中的 Page 都是无意义的空 Page；而 Replacer 中维护的是已经 Unpin 的 page 对应的 frame，但这类 page 暂时还留在 buffer pool中，后续可能会被用到而被 pin，也可能会被换出去，因此目前的 pin 肯定为0，dirty 则不确定，因为其目前还在 buffer pool 中，因此它的位置信息还在 page table 中；in use 的page，既不在 free list 中也不再 replacer 中，因为是在 use 的，因此 pin cnt 肯定不为0。</p>
+<p>接着就是按照这个状态完成各种函数，其中与 disk 打交道的部分是现成的，读入和写出的操作只需要调用 diskManager 的 API 即可。几个关键函数如下</p>
+<ul>
+<li>NewPgImp ：负责新生成一个 pageId（pageId 是虚拟的，只要递增不重复就行），然后从 free list 或者 replacer 中搞一个空闲 frame，把这个 frame 初始化为一个新的 page，注意新的 page 的状态应当属于 in use，因此 pin cnt = 1，还需要将其加入到 page table。</li>
+<li>UnpinPgImp：修改该 Page 的 pin cnt，当其为0时，调用 Replacer 的 Unpin，这代表将该 Page 的所在 Frame 列为潜在被淘汰对象。</li>
+<li>FetchPgImp：fetch 来的 Page 也应该被纳入 In use 状态，其 pin count 需要被修改。</li>
+</ul>
+<h3 id="Task-3-PARALLEL-BUFFER-POOL-MANAGER"><a href="#Task-3-PARALLEL-BUFFER-POOL-MANAGER" class="headerlink" title="Task #3 - PARALLEL BUFFER POOL MANAGER"></a>Task #3 - PARALLEL BUFFER POOL MANAGER</h3><p>这个任务的大意是说，因为我们的 pool 是支持多线程的，当多个线程一起调入调出 Page 时，由于有锁机制，导致锁争用效率很低。我们可以搞多个 pool，把 PageId 哈希到 pool，一个 pool 只负责一部分 Page 的处理。</p>
+<p>关键和容易错的地方只有一个，就是并行版的 NewPgImp。实验要求我们轮询生成，即每个 pool 生成的 page 要均匀。我们可以这么做，维护一个 idx，每次 new page 时就+1，mod pool_num 得到 pool 的id，轮到哪个 pool 就由哪个 pool 来 new page。可能出 bug 的地方在于，由于 ParallelBufferPoolManager 也是被多线程调用的，因此 idx 需要被锁保护以确保其严格按照+1递增，漏掉锁的话会出问题。</p>
+<h3 id="实验结果"><a href="#实验结果" class="headerlink" title="实验结果"></a>实验结果</h3><p>最后附上实验结果</p>
+<img src="../images/lab1_result.png" alt="image-20211207211733154" style="zoom:50%;" />
+
+
+
+]]></content>
+      <categories>
+        <category>数据库</category>
+      </categories>
+      <tags>
+        <tag>c++</tag>
+      </tags>
+  </entry>
 </search>
