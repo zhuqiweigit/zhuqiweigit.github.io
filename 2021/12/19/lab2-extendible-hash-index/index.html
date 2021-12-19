@@ -20,17 +20,17 @@
     var CONFIG = {"hostname":"zhuqiweigit.github.io","root":"/","scheme":"Mist","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
   </script>
 
-  <meta name="description" content="Lab2 的任务是实现一个可扩充（扩缩容）的哈希索引。这个哈希索引的作用是对数据库内的数据进行索引从而快速查询，以避免在检索时的逐行扫描。哈希索引分为meta-data和bucket，它们都存储在Page上，即整个哈希索引只有一个meta-data结构，它存储于一个Page上，而哈希索引有若干bucket，每个bucket存储在一个Page上。哈希索引通过lab1实现的buffer pool实现对">
+  <meta name="description" content="Lab2 的任务是实现一个可扩充（扩缩容）的哈希索引。其作用是对数据库内的数据进行索引从而快速查询，以避免在检索时的逐行扫描。哈希索引分为directory和bucket，它们都存储在Page上，即整个哈希索引只有一个directory结构，存储于一个Page上，而哈希索引有若干bucket，每个bucket存储在一个Page上。哈希索引通过lab1实现的buffer pool实现对Page的载入">
 <meta property="og:type" content="article">
 <meta property="og:title" content="lab2-extendible hash index">
 <meta property="og:url" content="https://zhuqiweigit.github.io/2021/12/19/lab2-extendible-hash-index/index.html">
 <meta property="og:site_name" content="ZhuQiwei&#39;s Blog">
-<meta property="og:description" content="Lab2 的任务是实现一个可扩充（扩缩容）的哈希索引。这个哈希索引的作用是对数据库内的数据进行索引从而快速查询，以避免在检索时的逐行扫描。哈希索引分为meta-data和bucket，它们都存储在Page上，即整个哈希索引只有一个meta-data结构，它存储于一个Page上，而哈希索引有若干bucket，每个bucket存储在一个Page上。哈希索引通过lab1实现的buffer pool实现对">
+<meta property="og:description" content="Lab2 的任务是实现一个可扩充（扩缩容）的哈希索引。其作用是对数据库内的数据进行索引从而快速查询，以避免在检索时的逐行扫描。哈希索引分为directory和bucket，它们都存储在Page上，即整个哈希索引只有一个directory结构，存储于一个Page上，而哈希索引有若干bucket，每个bucket存储在一个Page上。哈希索引通过lab1实现的buffer pool实现对Page的载入">
 <meta property="og:locale" content="en_US">
 <meta property="og:image" content="https://zhuqiweigit.github.io/2021/12/19/images/extendible_hash_index.png">
 <meta property="og:image" content="https://zhuqiweigit.github.io/2021/12/19/images/lab2_result.png">
 <meta property="article:published_time" content="2021-12-19T11:47:26.000Z">
-<meta property="article:modified_time" content="2021-12-19T14:32:31.052Z">
+<meta property="article:modified_time" content="2021-12-19T14:46:17.382Z">
 <meta property="article:author" content="ZhuQiwei">
 <meta property="article:tag" content="c++">
 <meta name="twitter:card" content="summary">
@@ -216,7 +216,7 @@
               <span class="post-meta-item-text">Posted on</span>
               
 
-              <time title="Created: 2021-12-19 19:47:26 / Modified: 22:32:31" itemprop="dateCreated datePublished" datetime="2021-12-19T19:47:26+08:00">2021-12-19</time>
+              <time title="Created: 2021-12-19 19:47:26 / Modified: 22:46:17" itemprop="dateCreated datePublished" datetime="2021-12-19T19:47:26+08:00">2021-12-19</time>
             </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -239,22 +239,24 @@
     <div class="post-body" itemprop="articleBody">
 
       
-        <p>Lab2 的任务是实现一个可扩充（扩缩容）的哈希索引。这个哈希索引的作用是对数据库内的数据进行索引从而快速查询，以避免在检索时的逐行扫描。哈希索引分为meta-data和bucket，它们都存储在Page上，即整个哈希索引只有一个meta-data结构，它存储于一个Page上，而哈希索引有若干bucket，每个bucket存储在一个Page上。哈希索引通过lab1实现的buffer pool实现对Page的载入和写回。</p>
+        <p>Lab2 的任务是实现一个可扩充（扩缩容）的哈希索引。其作用是对数据库内的数据进行索引从而快速查询，以避免在检索时的逐行扫描。哈希索引分为directory和bucket，它们都存储在Page上，即整个哈希索引只有一个directory结构，存储于一个Page上，而哈希索引有若干bucket，每个bucket存储在一个Page上。哈希索引通过lab1实现的buffer pool实现对Page的载入和写回。</p>
+<span id="more"></span>
+
 <h3 id="extendible-hash-index"><a href="#extendible-hash-index" class="headerlink" title="extendible hash index"></a>extendible hash index</h3><p>首先介绍一下extendible hash index算法的原理（详细描述可参考《数据库系统概念》，英文版《Database System Concepts》）。如下图所示为一个extendible hash index。每个虚线框都代表一个Page。左边部分是directory，存储了一个depth，称为global depth，还有一个pageId映射表，存储了每个哈希值对应bucket的pageId。右边是一些bucket，每个bucket都有一个自己的专属depth，称为local depth。</p>
 <img src="../images/extendible_hash_index.png" alt="extendible_hash_index" style="zoom:50%;" />
 
-<p>在拿到一个key之后，可扩充索引算法首先求出key的哈希值hash_key，我们假设其有32位，为uint32_t。我们不可能为每个哈希值都建立一个bucket，因为这需要2^32个桶，不现实。可扩充索引的原理是，我们初始的时候全局仅仅建立一个桶，所有key都存放在该桶中，当桶被填满后，我们新建一个桶，把旧桶中一部分元素转移到新桶中(rehash)。那么rehash的原则是什么呢？有一个办法，就是根据hash_key的<strong>二进制的尾数</strong>，即最后一位为0的待在原bucket a，最后一位为1的转移到新bucket b。此时，全局就有了两个桶a和b，以后新的待插入key都要根据其hash_key的最后一位是0还是1来决定放入哪个桶。当两个桶中的某个满了(假设为b，它原本接受hash_key位数为1的所有key)，我们就再新建一个桶c，把b的一部分数据转移到新桶c中，转移的原则是什么呢？现在就该根据hash_key的后2位来决定了。因为如果考虑后两位数的话，原本hash_key最后1位尾数为1的所有key可以分为两位尾数为01和11的，如果其最后2位尾数为01，则待在原桶b，否则若尾数为11，则转移至c桶。然后，当转移完key之后，我们还要考虑后续新来的key如何做插入。我们可以说，我们现在看新来的key的hash_key的二进制后两位，若后key的后两位为00、10，就放在a中（第一次分裂的规则一致）。若key的后两位为01，则插入桶b，后两位为11，插入桶c。</p>
+<p>在拿到一个key之后，可扩充索引算法首先求出key的哈希值hash_key，我们假设其有32位，为uint32_t。我们不可能为每个哈希值都建立一个bucket，因为这需要2^32个桶，不现实。可扩充索引的原理是，我们初始的时候全局仅仅建立一个桶，所有key都存放在该桶中，当桶被填满后，我们新建一个桶，把旧桶中一部分元素转移到新桶中(rehash)。那么rehash的原则是什么呢？有一个办法，就是根据hash_key的<strong>二进制的尾数</strong>，即最后一位为0的key待在原bucket a，最后一位为1的转移到新bucket b。此时，全局就有了两个桶a和b，以后新的待插入key都要根据其hash_key的最后一位是0还是1来决定放入哪个桶。当两个桶中的某个满了(假设为b，它原本接受hash_key位数为1的所有key)，我们就再新建一个桶c，把b的一部分数据转移到新桶c中，转移的原则是什么呢？现在就该根据hash_key的最后2位来决定了。原本hash_key最后1位尾数为1的所有key可以分为两位尾数为01和11，如果其最后2位尾数为01，则待在原桶b，否则若尾数为11，则转移至c桶。然后，当转移完key之后，我们还要考虑后续新来的key如何做插入。我们现在看新的key的hash_key的二进制最后两位，若后两位为00、10，就放在a中（与第一次分裂的规则一致）。若key的后两位为01，则插入桶b，后两位为11，插入桶c。</p>
 <p>这就是extendible hash index的原理，可以看出，决定待插入key该放在哪个桶，应该看key的哈希值hash_key的二进制数的最后若干位，这就是global depth的用处。而local depth的作用是决定如何进行桶的分裂。</p>
 <h4 id="查询"><a href="#查询" class="headerlink" title="查询"></a>查询</h4><p>查询主要依靠global depth。对于某个待查询的key，我们首先用哈希函数h计算其哈希值hash_key（这里的h有若干选择，如CRC32、murmur Hash等）。然后我们根据global depth，获取hash_key的二进制形式的最后global depth位，将其作为索引数字idx，然后找到directory中pageId映射表的第idx个位置，查看其对应的bucket的page_id是多少。然后凭借page_id拿到bucket，在bucket内部顺序检索即可(可以做一些优化，如设置墓碑标记，使得顺序查找可以提前结束)。</p>
 <h4 id="插入"><a href="#插入" class="headerlink" title="插入"></a>插入</h4><p>简单的插入原则和查询一致。但当插入导致bucket溢出时，我们需要做bucket的分裂。</p>
 <p>首先检查溢出bucket的local depth，若local depth小于global depth，我们只用做bucket split；如果local depth等于global depth，则先做directory expandsion，然后再做bucket split。</p>
 <ul>
-<li>directory expandsion：这是一个将directory double的过程，我们只需要改动directory<ul>
+<li>directory expandsion：这是一个将directory double的过程，我们只需要改动directory内的一些数据<ul>
 <li>global depth 加一</li>
 <li>将pageId映射表大小变为原来的2倍，并填充新增表项的内容</li>
 </ul>
 </li>
-<li>bucket split：我们需要新建一个bucket，然后把溢出的bucket内的一部分key转移到新bucket中，然后在directory中做一定的改动<ul>
+<li>bucket split：我们需要新建一个bucket，然后把溢出的bucket内的一部分key转移到新bucket中，然后在directory中做一些更新<ul>
 <li>溢出bucket的local depth加一</li>
 <li>根据溢出bucket的local depth，决定bucket中的表项是否转移至新bucket，并转移</li>
 <li>设置新bucket在directory中的索引</li>
@@ -262,14 +264,14 @@
 </ul>
 </li>
 <li>directory的性质<ul>
-<li>如果一个bucket的local_depth小于directory的global_depth，则directory中会有多个idx指向该bucket。具体个数为2^(global_depth -local_depth )。</li>
+<li>如果一个bucket的local_depth小于directory的global_depth，则directory中会有多个idx指向该bucket。具体个数为2<sup>global_depth -local_depth</sup></li>
 <li>global_depth主要用于key到bucket的导航；local depth主要用于split和merge时发现镜像pair。</li>
 </ul>
 </li>
 </ul>
 <h4 id="删除"><a href="#删除" class="headerlink" title="删除"></a>删除</h4><p>简单的删除原则和查询一致。但当删除导致bucket为空时，需要做bucket的merge（这里比较严格，实际上可以是bucket的占用率低于某个条件就做merge，可以人为规定merge时机）。</p>
 <ul>
-<li>merge的几个条件<ul>
+<li>实验中merge必须满足的几个条件<ul>
 <li>当前bucket为空时，才对它进行merge</li>
 <li>当前bucket的local_depth必须和其image_bucket的local_depth相等</li>
 <li>当前bucket的local_depth必须大于0</li>
@@ -285,21 +287,21 @@
 <h3 id="CONCURRENCY-CONTROL"><a href="#CONCURRENCY-CONTROL" class="headerlink" title="CONCURRENCY CONTROL"></a>CONCURRENCY CONTROL</h3><p>我们需要对哈希索引做并发控制，使得其支持多线程访问。我们使用两类锁配合实现并发控制：table_lock 和 bucket_lock。table_lock只有一个，用于保护directory，可以以读模式和写模式获取。bucket_lock每个bucket有一个，用于保护单个bucket的读写。</p>
 <p>具体的实现逻辑如下</p>
 <h4 id="insert-amp-split"><a href="#insert-amp-split" class="headerlink" title="insert &amp; split"></a>insert &amp; split</h4><p>插入操作需要<strong>全程在directory读锁的保护下进行</strong>，以确保插入过程中diectory不会变动。此外我们还需要对应bucket的写锁。</p>
-<p>我们首先在directory读锁和bucket写锁的保护下检测bucket是否满，如果不满则直接插入并返回。</p>
+<p>我们首先在directory读锁和bucket写锁的保护下检测bucket是否是满的，如果不满则直接插入并返回。</p>
 <p>如果bucket是满的，则需要做split。我们先释放之前获取的锁，然后请求directory的写锁。然后做split_and_insert。因为释放之前的锁和请求directory的写锁之间不是原子的，会有时间间隙，在这段时间内bucket可能又是不满的了，因此我们在split_and_insert内再次先判断一下bucket是否满，如果满了，再做split，否则直接insert。</p>
 <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">insert</span><span class="params">(...)</span></span>&#123;</span><br><span class="line">  table_lock.read_lock();</span><br><span class="line">  bucket_lock.write_lock();</span><br><span class="line">  <span class="comment">//try to insert</span></span><br><span class="line">  <span class="keyword">bool</span> succeed;</span><br><span class="line">  <span class="keyword">if</span>(bucket is <span class="keyword">not</span> full)&#123;</span><br><span class="line">    succeed = bucket_insert(...);</span><br><span class="line">  	bucket_lock.write_unlock();</span><br><span class="line">    table_lock.read_unlock();</span><br><span class="line">    <span class="keyword">return</span> succeed;</span><br><span class="line">  &#125;<span class="keyword">else</span>&#123;</span><br><span class="line">  	bucket_lock.write_unlock();</span><br><span class="line">    table_lock.read_unlock();</span><br><span class="line">    <span class="comment">//use table write lock to split and insert</span></span><br><span class="line">    table_lock.write_lock();</span><br><span class="line">    succeed = split_and_insert(...);</span><br><span class="line">    table_lock.write_unlock();</span><br><span class="line">    <span class="keyword">return</span> succeed;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">split_and_insert</span><span class="params">()</span></span>&#123;</span><br><span class="line">  <span class="keyword">while</span>(bucket is full)&#123;</span><br><span class="line">    <span class="comment">//do split</span></span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">return</span> bucket_insert(...);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
 <h4 id="delete-amp-merge"><a href="#delete-amp-merge" class="headerlink" title="delete &amp; merge"></a>delete &amp; merge</h4><p>和上面的同理。我们在directory的读锁和bucket的写锁保护下，先删除元素，然后顺便探测一下是否需要merge。如果需要，则释放directory的读锁和bucket的写锁，重新申请directory的写锁，然后做merge。</p>
-<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">delete</span><span class="params">(...)</span></span>&#123;</span><br><span class="line">   table_lock.read_lock();</span><br><span class="line">   bucket_lock.write_lock();</span><br><span class="line">   <span class="keyword">bool</span> succeed = bucket_delete(...);	</span><br><span class="line">   <span class="keyword">if</span>(we need merge)&#123;</span><br><span class="line">   		bucket_lock.write_unlock();</span><br><span class="line">    	table_lock.read_unlock();</span><br><span class="line">     </span><br><span class="line">     	table_lock.write_lock();</span><br><span class="line">     	merge();</span><br><span class="line">     	table_lock.write_unlock();</span><br><span class="line">   &#125;<span class="keyword">else</span>&#123;</span><br><span class="line">     	bucket_lock.write_unlock();</span><br><span class="line">    	table_lock.read_unlock();</span><br><span class="line">   &#125;</span><br><span class="line">   <span class="keyword">return</span> succeed;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">delete</span><span class="params">(...)</span></span>&#123;</span><br><span class="line">   table_lock.read_lock();</span><br><span class="line">   bucket_lock.write_lock();</span><br><span class="line">   <span class="keyword">bool</span> succeed = bucket_delete(...);	</span><br><span class="line">   <span class="keyword">if</span>(we need merge)&#123;</span><br><span class="line">   		bucket_lock.write_unlock();</span><br><span class="line">    	table_lock.read_unlock();</span><br><span class="line">     </span><br><span class="line">     	table_lock.write_lock();</span><br><span class="line">     	merge();</span><br><span class="line">     	table_lock.write_unlock();</span><br><span class="line">   &#125;<span class="keyword">else</span>&#123;</span><br><span class="line">     	bucket_lock.write_unlock();</span><br><span class="line">    	table_lock.read_unlock();</span><br><span class="line">   &#125;</span><br><span class="line">   <span class="keyword">return</span> succeed;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">merge</span><span class="params">()</span></span>&#123;</span><br><span class="line">  <span class="comment">//recheck if we need merge</span></span><br><span class="line">  <span class="keyword">if</span>(we need merge)&#123;</span><br><span class="line">    	<span class="comment">//do merge</span></span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">return</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
 
 
 <h3 id="实验结果"><a href="#实验结果" class="headerlink" title="实验结果"></a>实验结果</h3><p>一些注意事项</p>
 <ul>
-<li>split需要实现成循环的。因为一次split后，bucket可能还是满的</li>
+<li>split要实现成循环的。因为一次split后，bucket可能还是满的</li>
 <li>我们new一个page、fetch一个page后默认已经pin了，因此我们只需要注意unpin时机，以及dirty的设置</li>
-<li>bucket lock是在page上存储的，为防止还没释放锁page就被换出了，必须先解锁再unpin bucket page；table_lock则无所谓</li>
-<li>gdb 调试作用不大。一般错误主要出在split和merge上，善用PrintDirectory和PrintBucket就行。</li>
+<li>bucket lock是在page上存储的，为防止还没释放锁，page就被换出了，必须先解锁再unpin bucket page；table_lock则无所谓</li>
+<li>gdb 调试作用不大。一般错误主要出在split和merge上，善用PrintDirectory和PrintBucket就行</li>
 <li>实验代码提供了检验directory完整性的函数VerifyIntegrity（依据directory的性质实现），可以在每次split或merge后调用一下，帮你发现一些问题</li>
 </ul>
 <p>附上实验结果</p>
