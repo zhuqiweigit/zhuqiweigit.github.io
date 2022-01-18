@@ -491,7 +491,7 @@
       </tags>
   </entry>
   <entry>
-    <title>lab3 query execution</title>
+    <title>lab3-query execution</title>
     <url>/2022/01/18/lab3-query-execution/</url>
     <content><![CDATA[<p>Lab3的任务是实现数据库中查询的执行。具体地，lab中假设已经有了从SQL语句到执行计划的处理模块，我们只需要实现：依据给定的执行计划(plan)，实现对应的executor。每个执行计划节点planNode，都有其对应的executor。planNode负责描述执行一个executor所需的必要信息（表名、where的条件、limit的数量、join的joinKey等等），而executor根据planNode所提供的信息进行具体执行。planNode呈现树形，因此executor也是以树形组合起来的。lab3采用iterator模型(也叫volcano模型)执行查询，即每个executor都实现一个next方法，此方法每调用一次就返回一个tuple或返回一个空指示符。</p>
 <span id="more"></span>
