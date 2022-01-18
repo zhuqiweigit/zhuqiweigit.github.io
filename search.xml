@@ -490,4 +490,57 @@
         <tag>c++</tag>
       </tags>
   </entry>
+  <entry>
+    <title>lab3 query execution</title>
+    <url>/2022/01/18/lab3-query-execution/</url>
+    <content><![CDATA[<p>Lab3的任务是实现数据库中查询的执行。具体地，lab中假设已经有了从SQL语句到执行计划的处理模块，我们只需要实现：依据给定的执行计划(plan)，实现对应的executor。每个执行计划节点planNode，都有其对应的executor。planNode负责描述执行一个executor所需的必要信息（表名、where的条件、limit的数量、join的joinKey等等），而executor根据planNode所提供的信息进行具体执行。planNode呈现树形，因此executor也是以树形组合起来的。lab3采用iterator模型(也叫volcano模型)执行查询，即每个executor都实现一个next方法，此方法每调用一次就返回一个tuple或返回一个空指示符。</p>
+<span id="more"></span>
+
+<p>我们要实现的executor有三类：</p>
+<ol>
+<li>访问方法：sequencial scan</li>
+<li>修改：insert、update、delete</li>
+<li>其它：Nested Loop Join, Hash Join, Aggregation, Limit, Distinct</li>
+</ol>
+<p>其中，前两类都是对table的直接操作。而第三类一般不需要直接访问table，而是处理由其它子executor节点提供的tuple。</p>
+<h3 id="相关类的关系"><a href="#相关类的关系" class="headerlink" title="相关类的关系"></a>相关类的关系</h3><p>本次lab难度一般，但关键是有许多相关代码需要读懂，个人认为这才是本次实验的难点。下图是涉及到的主要类的关系图。</p>
+<img src="../images/class.jpg" alt="class" style="zoom:80%;" />
+
+
+
+<p>其次是写代码需要实现的class的关系，主要是executor.</p>
+<img src="../images/executor.jpg" alt="executor" style="zoom:35%;" />
+
+<h3 id="SEQUENTIAL-SCAN-EXECUTOR"><a href="#SEQUENTIAL-SCAN-EXECUTOR" class="headerlink" title="SEQUENTIAL SCAN EXECUTOR"></a>SEQUENTIAL SCAN EXECUTOR</h3><p>这个Executor用于遍历Table，并输出遍历的每个Tuple。</p>
+<p>遍历Table可以使用TableHeap提供的TableIterator。在Init函数中初始化iterator，然后每次Next时就自增一个。需要注意的是Sequential scan plan中可能存在predicate，如果有的话，需要对该tuple进行Evaluate，符合条件的tuple才能输出。此外，Sequential scan plan中规定了具体输出tuple的哪些column（在outputSchema中），我们需要按照这个schema进行输出。由于outputSchema中的columns都存储了自己在原table的schema中位置的映射expr(columnValueExpression)，直接用这个expr进行Evaluate即可计算出原Table的tuple中哪些column需要输出。</p>
+<h3 id="INSERT-DELETE-UPDATE-EXECUTOR"><a href="#INSERT-DELETE-UPDATE-EXECUTOR" class="headerlink" title="INSERT/DELETE/UPDATE EXECUTOR"></a>INSERT/DELETE/UPDATE EXECUTOR</h3><p>这三个executor也需要访问table，它们的作用是对table进行修改。对Table的操作需要首先获取Catalog中的该Table的MetaInfo。</p>
+<p>其次，一旦对该Table内容做了修改，该Table上对应的Indexes都应该同步作出修改。</p>
+<h3 id="NESTED-LOOP-JOIN-EXECUTOR"><a href="#NESTED-LOOP-JOIN-EXECUTOR" class="headerlink" title="NESTED LOOP JOIN EXECUTOR"></a>NESTED LOOP JOIN EXECUTOR</h3><p>Nested Loop Join使用两层循环进行join。不同于scan executor，它的输入tuple都来自于child_executor，通过不断调用child的Next获取tuple。对于外层循环，每通过Next获取到一个tuple后，就初始化内存循环对应的executor。然后不断获取内层executor的tuple，并利用plan中的expr进行joinKey的比较。</p>
+<p>如果join成功，则需要根据outPutSchema进行tuple的重组，输出。</p>
+<p>此外需要考虑重复的tuple的join，我们使用buffer解决这一问题。如果A表对应outer executor，B表对应inner executor。当固定outer executor中的某个tuple后，我们遍历inner executor进行join，如果发现joinKey相等，则将该outer executor和 inner executor的tuple重组成新的tuple，并存入buffer。此后，如果buffer中有tuple，就直接输出；否则再进行inner table的遍历。</p>
+<h3 id="HASH-JOIN-EXECUTOR"><a href="#HASH-JOIN-EXECUTOR" class="headerlink" title="HASH JOIN EXECUTOR"></a>HASH JOIN EXECUTOR</h3><p>由于lab假设内存中可以容纳的下一个哈希表，因此我们不需要考虑spill。在该executor的Init过程中，我们反复调用outer executor的Next，将获取到的tuple，根据其joinKey插入哈希表。</p>
+<p>接着，在Next函数中，反复遍历inner executor，对获取到的tuple，提取其joinKey，并在哈希表中查找，如果找到，则进行join操作，重组一个新的tuple，作为结果。</p>
+<p>同样地，考虑到重复的joinKey的情况，我们采用output buffer机制进行输出。</p>
+<h3 id="AGGREGATION-EXECUTOR"><a href="#AGGREGATION-EXECUTOR" class="headerlink" title="AGGREGATION EXECUTOR"></a>AGGREGATION EXECUTOR</h3><p>使用哈希表机制。在Init函数中，反复调用agg executor 的child executor获取tuple。然后，从tuple中提取aggregation key，借助aggregation key计算agg的结果，然后将key和agg结果一起插入哈希表。</p>
+<p>输出时，我们借助哈希表的iterator，在哈希表上反复迭代。</p>
+<h3 id="LIMIT-EXECUTOR"><a href="#LIMIT-EXECUTOR" class="headerlink" title="LIMIT EXECUTOR"></a>LIMIT EXECUTOR</h3><p>在executor中保留一个计数器，记录已经输出的tuple个数。当计数器超过 plan中规定的limit 参数时，就返回false。</p>
+<h3 id="DISTINCT-EXECUTOR"><a href="#DISTINCT-EXECUTOR" class="headerlink" title="DISTINCT EXECUTOR"></a>DISTINCT EXECUTOR</h3><p>同样的，借助哈希表进行去重操作。不同的是，我们不需要再INIT中构件号整个哈希表。而是可以流式地处理，即在调用Next的过程中，检查该tuple是否重复。</p>
+<h3 id="实验结果"><a href="#实验结果" class="headerlink" title="实验结果"></a>实验结果</h3><p>一些注意事项</p>
+<ul>
+<li>本次实验的关键是读懂相关代码，然后再开始做</li>
+<li>每个Executor Init时，需要先调用child executor的init</li>
+<li>注意nested loop join时，存在joinKey重复的情况。最好用output buffer机制</li>
+<li>用outputSchema重组出需要返回的tuple、如何用expression重组符合要求的tuple比较麻烦，读懂相关代码就容易了</li>
+</ul>
+<p>最后，附上实验结果</p>
+<img src="../images/query_execution_result.png" alt="image-20220118185707211" style="zoom:50%;" />
+
+]]></content>
+      <categories>
+        <category>数据库</category>
+      </categories>
+      <tags>
+        <tag>c++</tag>
+      </tags>
+  </entry>
 </search>
