@@ -32,7 +32,7 @@
 <meta property="og:image" content="https://zhuqiweigit.github.io/2022/02/02/images/2pl.png">
 <meta property="og:image" content="https://zhuqiweigit.github.io/2022/02/02/images/lab4_result.png">
 <meta property="article:published_time" content="2022-02-02T06:35:21.000Z">
-<meta property="article:modified_time" content="2022-02-06T07:57:04.862Z">
+<meta property="article:modified_time" content="2022-02-06T08:07:42.204Z">
 <meta property="article:author" content="ZhuQiwei">
 <meta property="article:tag" content="c++">
 <meta name="twitter:card" content="summary">
@@ -224,7 +224,7 @@
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">Edited on</span>
-                <time title="Modified: 2022-02-06 15:57:04" itemprop="dateModified" datetime="2022-02-06T15:57:04+08:00">2022-02-06</time>
+                <time title="Modified: 2022-02-06 16:07:42" itemprop="dateModified" datetime="2022-02-06T16:07:42+08:00">2022-02-06</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -248,6 +248,8 @@
 
       
         <p>之前的lab实现了数据库查询计划的执行，但我们都是建立在单线程的基础上。当引入了事务后，为了让多个事务能够并发执行，我们就需要一些方法实现事务间的隔离。常见的方法有：基于锁、基于时间戳、基于多版本。本次lab主要使用基于锁的并发控制实现事务间的隔离。具体来说，我们实现一个tuple级别的锁管理器lock manager，它支持对单个tuple加读锁or写锁。然后使用lock manager实现两阶段封锁协议。</p>
+<span id="more"></span>
+
 <h3 id="TASK-1-LOCK-MANAGER"><a href="#TASK-1-LOCK-MANAGER" class="headerlink" title="TASK #1 - LOCK MANAGER"></a>TASK #1 - LOCK MANAGER</h3><p>首先我们实现一个lock manager，它用于对单个tuple加锁和解锁。我们需要实现对同一个tuple的读锁和写锁，其核心数据结构是std::unordered_map&lt;RID, LockRequestQueue&gt; lock_table_，它用于存储当前某个tuple上的全部锁请求，包括已经授予锁的请求和正在等待锁的请求。</p>
 <p>理论上，应该按照链表的方式管理锁请求，每个tuple都有一个链表。算法如下，这种方式可以避免锁请求被饿死。但如果采用条件变量(wait、signal)来检测请求链表，实现起来较为麻烦。</p>
 <img src="../images/lock_manager.png" alt="image-20220202201830479" style="zoom:50%;" />
@@ -259,14 +261,15 @@
 <p>实验要求我们使用死锁预防，使用<strong>WOUND-WAIT</strong>机制避免死锁，这相当于破坏了死锁条件中的：不可剥夺。具体算法为：当前事务Ti申请的数据项被当前事务Tj持有，仅当Ti的时间戳小于Tj的时间戳时，允许Ti等待，否则Ti回滚。但是，根据lab4的test case可以发现，这个算法应该被修正为：当前事务Ti申请的数据项被当前事务Tj持有 **(或Tj正在等待该数据项)**，仅当Ti的时间戳小于Tj的时间戳时，允许Ti等待，否则Ti回滚。</p>
 <p>在具体实现方面，我们还要考虑读写锁的相容问题，如果Ti和Tj相容（即Ti和Tj都对同一个tuple加读锁），则不需要考虑abort。</p>
 <p>最后，还需要注意在abort一个请求后，需要将它从request队列中删除，并维护shared_cnt和exclusive_lock的状态。因为request队列以及shared_cnt和exclusive_lock的状态有两个渠道维护，其一是当阻塞中的事务发现自己被abort后，会在事务的结尾进行Unlock all locks；其二是未被阻塞的事务，它可能一直在运行中，其被DEADLOCK PREVENTION机制abort后，仍然在运行中，此时我们需要先行在DeadLockPrevection机制将其锁请求从请求队列中删掉。</p>
+<p>此外，由于DEADLOCK PREVENTION的剥夺机制，写事务不会出现饿死的现象。</p>
 <h3 id="TASK-3-CONCURRENT-QUERY-EXECUTION"><a href="#TASK-3-CONCURRENT-QUERY-EXECUTION" class="headerlink" title="TASK #3 - CONCURRENT QUERY EXECUTION"></a>TASK #3 - CONCURRENT QUERY EXECUTION</h3><p>现在我们要使用2阶段锁协议实现多事务的并发执行。事务的隔离级别如下，隔离级别从高到低，事务的并发也越来越强。</p>
 <img src="../images/iso.png" alt="image-20220206151209346" style="zoom: 33%;" />
 
 <p>因为严格的2pl机制可以实现最高级别的事务隔离性，即serializable。但我们希望在容忍损失一定的隔离性的情况下，实现事务的高效并发，因此才会有其它隔离级别的存在。</p>
-<p>下图是如何修改2pl，使得其支持不同隔离级别。</p>
+<p>下图是如何修改2pl协议，使得其支持不同隔离级别。</p>
 <img src="../images/2pl.png" alt="image-20220206151553632" style="zoom:33%;" />
 
-<p>我们要做的，就是在每个executor读or写一个tuple之前和之后，给其加上适合的锁。</p>
+<p>我们要做的，就是按照上述协议，在每个executor读or写一个tuple之前、后，给其加上适合的读写锁。</p>
 <p>对于加读锁我们需要考虑，如果当前事务为read uncommitted级别，不需要读锁，因此直接abort或者抛异常。如果当前事物在这个tuple上已经有写锁or读锁了，那我们就不需要再申请。</p>
 <p>对于加写锁我们考虑，如果当前事务在这个tuple上已经有读锁了，那我们应该直接upgrade。如果当前已经有写锁了，我们直接返回，不需要再次申请。</p>
 <p>对于解锁，只有当隔离级别为read committed时，需要在读完tuple后立即释放读锁。其它的情况，都是在事务结束时的末尾，在transaction层面由transaction manager在对事务进行commit或abort时，统一解锁的。</p>
