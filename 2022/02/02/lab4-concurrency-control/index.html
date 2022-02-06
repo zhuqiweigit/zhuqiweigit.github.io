@@ -20,19 +20,25 @@
     var CONFIG = {"hostname":"zhuqiweigit.github.io","root":"/","scheme":"Mist","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
   </script>
 
-  <meta name="description" content="hexo notes">
+  <meta name="description" content="之前的lab实现了数据库查询计划的执行，但我们都是建立在单线程的基础上。当引入了事务后，为了让多个事务能够并发执行，我们就需要一些方法实现事务间的隔离。常见的方法有：基于锁、基于时间戳、基于多版本。本次lab主要使用基于锁的并发控制实现事务间的隔离。具体来说，我们实现一个tuple级别的锁管理器lock manager，它支持对单个tuple加读锁or写锁。然后使用lock manager实现两阶">
 <meta property="og:type" content="article">
-<meta property="og:title" content="hexo notes">
-<meta property="og:url" content="https://zhuqiweigit.github.io/2021/02/23/hexo%20notes/index.html">
+<meta property="og:title" content="lab4-concurrency control">
+<meta property="og:url" content="https://zhuqiweigit.github.io/2022/02/02/lab4-concurrency-control/index.html">
 <meta property="og:site_name" content="ZhuQiwei&#39;s Blog">
-<meta property="og:description" content="hexo notes">
+<meta property="og:description" content="之前的lab实现了数据库查询计划的执行，但我们都是建立在单线程的基础上。当引入了事务后，为了让多个事务能够并发执行，我们就需要一些方法实现事务间的隔离。常见的方法有：基于锁、基于时间戳、基于多版本。本次lab主要使用基于锁的并发控制实现事务间的隔离。具体来说，我们实现一个tuple级别的锁管理器lock manager，它支持对单个tuple加读锁or写锁。然后使用lock manager实现两阶">
 <meta property="og:locale" content="en_US">
-<meta property="article:published_time" content="2021-02-23T15:06:26.000Z">
-<meta property="article:modified_time" content="2021-10-05T12:08:59.491Z">
+<meta property="og:image" content="https://zhuqiweigit.github.io/2022/02/02/images/lock_manager.png">
+<meta property="og:image" content="https://zhuqiweigit.github.io/2022/02/02/images/iso.png">
+<meta property="og:image" content="https://zhuqiweigit.github.io/2022/02/02/images/2pl.png">
+<meta property="og:image" content="https://zhuqiweigit.github.io/2022/02/02/images/lab4_result.png">
+<meta property="article:published_time" content="2022-02-02T06:35:21.000Z">
+<meta property="article:modified_time" content="2022-02-06T07:57:04.862Z">
 <meta property="article:author" content="ZhuQiwei">
+<meta property="article:tag" content="c++">
 <meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://zhuqiweigit.github.io/2022/02/02/images/lock_manager.png">
 
-<link rel="canonical" href="https://zhuqiweigit.github.io/2021/02/23/hexo%20notes/">
+<link rel="canonical" href="https://zhuqiweigit.github.io/2022/02/02/lab4-concurrency-control/">
 
 
 <script id="page-configurations">
@@ -45,7 +51,7 @@
   };
 </script>
 
-  <title>hexo notes | ZhuQiwei's Blog</title>
+  <title>lab4-concurrency control | ZhuQiwei's Blog</title>
   
 
 
@@ -188,7 +194,7 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="en">
-    <link itemprop="mainEntityOfPage" href="https://zhuqiweigit.github.io/2021/02/23/hexo%20notes/">
+    <link itemprop="mainEntityOfPage" href="https://zhuqiweigit.github.io/2022/02/02/lab4-concurrency-control/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="image" content="/images/avatar.gif">
@@ -201,7 +207,7 @@
     </span>
       <header class="post-header">
         <h1 class="post-title" itemprop="name headline">
-          hexo notes
+          lab4-concurrency control
         </h1>
 
         <div class="post-meta">
@@ -211,14 +217,14 @@
               </span>
               <span class="post-meta-item-text">Posted on</span>
 
-              <time title="Created: 2021-02-23 23:06:26" itemprop="dateCreated datePublished" datetime="2021-02-23T23:06:26+08:00">2021-02-23</time>
+              <time title="Created: 2022-02-02 14:35:21" itemprop="dateCreated datePublished" datetime="2022-02-02T14:35:21+08:00">2022-02-02</time>
             </span>
               <span class="post-meta-item">
                 <span class="post-meta-item-icon">
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">Edited on</span>
-                <time title="Modified: 2021-10-05 20:08:59" itemprop="dateModified" datetime="2021-10-05T20:08:59+08:00">2021-10-05</time>
+                <time title="Modified: 2022-02-06 15:57:04" itemprop="dateModified" datetime="2022-02-06T15:57:04+08:00">2022-02-06</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -226,7 +232,7 @@
               </span>
               <span class="post-meta-item-text">In</span>
                 <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%85%B6%E5%AE%83/" itemprop="url" rel="index"><span itemprop="name">其它</span></a>
+                  <a href="/categories/%E6%95%B0%E6%8D%AE%E5%BA%93/" itemprop="url" rel="index"><span itemprop="name">数据库</span></a>
                 </span>
             </span>
 
@@ -241,39 +247,38 @@
     <div class="post-body" itemprop="articleBody">
 
       
-        <h1 id="hexo-notes"><a href="#hexo-notes" class="headerlink" title="hexo notes"></a>hexo notes</h1><span id="more"></span>
+        <p>之前的lab实现了数据库查询计划的执行，但我们都是建立在单线程的基础上。当引入了事务后，为了让多个事务能够并发执行，我们就需要一些方法实现事务间的隔离。常见的方法有：基于锁、基于时间戳、基于多版本。本次lab主要使用基于锁的并发控制实现事务间的隔离。具体来说，我们实现一个tuple级别的锁管理器lock manager，它支持对单个tuple加读锁or写锁。然后使用lock manager实现两阶段封锁协议。</p>
+<h3 id="TASK-1-LOCK-MANAGER"><a href="#TASK-1-LOCK-MANAGER" class="headerlink" title="TASK #1 - LOCK MANAGER"></a>TASK #1 - LOCK MANAGER</h3><p>首先我们实现一个lock manager，它用于对单个tuple加锁和解锁。我们需要实现对同一个tuple的读锁和写锁，其核心数据结构是std::unordered_map&lt;RID, LockRequestQueue&gt; lock_table_，它用于存储当前某个tuple上的全部锁请求，包括已经授予锁的请求和正在等待锁的请求。</p>
+<p>理论上，应该按照链表的方式管理锁请求，每个tuple都有一个链表。算法如下，这种方式可以避免锁请求被饿死。但如果采用条件变量(wait、signal)来检测请求链表，实现起来较为麻烦。</p>
+<img src="../images/lock_manager.png" alt="image-20220202201830479" style="zoom:50%;" />
 
+<p>我在这里没有采用上述做法，而是直接采用操作系统里经典的读者-写者模型。当然，naive版的读写者模型会导致写者饿死，但我们结合考虑task2的 <strong>WOUND-WAIT</strong>算法，就会发现，这个死锁预防机制恰好可以消除读优先导致写者饿死的问题，具体细节留到task2详谈。</p>
+<p>lock manager采用读写者模型，在LockManager类中设置两个变量：读锁计数器 shared_cnt 和写锁标志 exclusive_lock。其中LockShared负责处理读锁请求，其condition variable 等待条件为：当前申请锁的事务被abort（如果被abort了，就直接返回false），或者当前tuple没有加写锁。LockExclusive负责处理写锁请求，其condition variable等待条件为：当前申请锁的事务被abort，或者当前tuple没有加写锁和读锁(shared_cnt 为0)。LockUpgrade负责处理提升锁，即将已经获取shared lock的提升为exclusive lock，首先从请求队列中删除shared 锁，然后再请求exclusive锁，其中删除shared锁+请求exclusive锁之间必须是原子的（可以通过在这两个步骤外面加latch实现）。</p>
+<p>解锁方面，解锁后，需要把request从锁请求队列中拿出来，然后修改shared_cnt和exclusive_lock的状态。最后，因为会存在一些线程阻塞在锁请求队列的等待锁上，因此需要将其唤醒。</p>
+<h3 id="TASK-2-DEADLOCK-PREVENTION"><a href="#TASK-2-DEADLOCK-PREVENTION" class="headerlink" title="TASK #2 - DEADLOCK PREVENTION"></a>TASK #2 - DEADLOCK PREVENTION</h3><p>接着我们完成死锁预防机制。解决死锁，可以采取事先预防和事后处理的办法，事先预防就是提前避免死锁发生的条件，而事后处理则是根据锁请求建立一个请求graph，然后一旦graph中出现环，就说明发生了死锁，此时直接abort掉一个事务，破坏该环就行。</p>
+<p>实验要求我们使用死锁预防，使用<strong>WOUND-WAIT</strong>机制避免死锁，这相当于破坏了死锁条件中的：不可剥夺。具体算法为：当前事务Ti申请的数据项被当前事务Tj持有，仅当Ti的时间戳小于Tj的时间戳时，允许Ti等待，否则Ti回滚。但是，根据lab4的test case可以发现，这个算法应该被修正为：当前事务Ti申请的数据项被当前事务Tj持有 **(或Tj正在等待该数据项)**，仅当Ti的时间戳小于Tj的时间戳时，允许Ti等待，否则Ti回滚。</p>
+<p>在具体实现方面，我们还要考虑读写锁的相容问题，如果Ti和Tj相容（即Ti和Tj都对同一个tuple加读锁），则不需要考虑abort。</p>
+<p>最后，还需要注意在abort一个请求后，需要将它从request队列中删除，并维护shared_cnt和exclusive_lock的状态。因为request队列以及shared_cnt和exclusive_lock的状态有两个渠道维护，其一是当阻塞中的事务发现自己被abort后，会在事务的结尾进行Unlock all locks；其二是未被阻塞的事务，它可能一直在运行中，其被DEADLOCK PREVENTION机制abort后，仍然在运行中，此时我们需要先行在DeadLockPrevection机制将其锁请求从请求队列中删掉。</p>
+<h3 id="TASK-3-CONCURRENT-QUERY-EXECUTION"><a href="#TASK-3-CONCURRENT-QUERY-EXECUTION" class="headerlink" title="TASK #3 - CONCURRENT QUERY EXECUTION"></a>TASK #3 - CONCURRENT QUERY EXECUTION</h3><p>现在我们要使用2阶段锁协议实现多事务的并发执行。事务的隔离级别如下，隔离级别从高到低，事务的并发也越来越强。</p>
+<img src="../images/iso.png" alt="image-20220206151209346" style="zoom: 33%;" />
+
+<p>因为严格的2pl机制可以实现最高级别的事务隔离性，即serializable。但我们希望在容忍损失一定的隔离性的情况下，实现事务的高效并发，因此才会有其它隔离级别的存在。</p>
+<p>下图是如何修改2pl，使得其支持不同隔离级别。</p>
+<img src="../images/2pl.png" alt="image-20220206151553632" style="zoom:33%;" />
+
+<p>我们要做的，就是在每个executor读or写一个tuple之前和之后，给其加上适合的锁。</p>
+<p>对于加读锁我们需要考虑，如果当前事务为read uncommitted级别，不需要读锁，因此直接abort或者抛异常。如果当前事物在这个tuple上已经有写锁or读锁了，那我们就不需要再申请。</p>
+<p>对于加写锁我们考虑，如果当前事务在这个tuple上已经有读锁了，那我们应该直接upgrade。如果当前已经有写锁了，我们直接返回，不需要再次申请。</p>
+<p>对于解锁，只有当隔离级别为read committed时，需要在读完tuple后立即释放读锁。其它的情况，都是在事务结束时的末尾，在transaction层面由transaction manager在对事务进行commit或abort时，统一解锁的。</p>
+<h3 id="实验结果"><a href="#实验结果" class="headerlink" title="实验结果"></a>实验结果</h3><p>一些注意事项</p>
 <ul>
-<li><p>新建文章</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">hexo new <span class="string">&quot;hexo notes&quot;</span></span><br></pre></td></tr></table></figure>
-</li>
-<li><p>编译生成页面</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">hexo generate</span><br></pre></td></tr></table></figure>
-</li>
-<li><p>本地开启服务器并预览</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">hexo server   <span class="comment">#一般会在http://localhost:4000</span></span><br></pre></td></tr></table></figure>
-</li>
-<li><p>deploy（一键git提交、push到远端）</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">hexo deploy</span><br></pre></td></tr></table></figure>
-</li>
-<li><p>Clean 清理缓存文件</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">hexo clean</span><br></pre></td></tr></table></figure>
-</li>
-<li><p>markdown中存在图片：</p>
-<p>将pic拷贝到 source/images目录下，并将md中的引用链接也设置为此</p>
-</li>
-<li><p>主页文章缩略</p>
-<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">在文章内添加 &lt;!-- more --&gt;</span><br></pre></td></tr></table></figure>
-</li>
-<li><p>动态加载图片</p>
-<p>在config中开启pjax</p>
-</li>
-<li><p>github 鉴权失败问题</p>
-<p>在 hexo 项目的根目录，修改 _config.yml ；将 repo 地址，从 https 协议改为 ssh</p>
-<figure class="highlight yml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">deploy:</span></span><br><span class="line">  <span class="attr">type:</span> <span class="string">git</span></span><br><span class="line">  <span class="attr">repo:</span> <span class="string">git@github.com:zhuqiweigit/zhuqiweigit.github.io</span></span><br><span class="line">  <span class="attr">branch:</span> <span class="string">master</span></span><br></pre></td></tr></table></figure>
+<li><p>在lock_table_中新插入一个{RID, RequestQueue}时，因为RequestQueue中有condition_variable变量，属于不可拷贝的变量，因此RequestQueue不可拷贝。我们不能用insert或map的中括号的方式插入新的{RID, RequestQueue}，而应该使用emplace_back。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">lock_table_.emplace(<span class="built_in">std</span>::piecewise_construct, <span class="built_in">std</span>::forward_as_tuple(rid), <span class="built_in">std</span>::forward_as_tuple());</span><br></pre></td></tr></table></figure>
 
 </li>
 </ul>
+<p>最后附上实验结果</p>
+<img src="../images/lab4_result.png" alt="image-20220206155343911" style="zoom:50%;" />
 
     </div>
 
@@ -282,17 +287,20 @@
     
 
       <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/c/" rel="tag"># c++</a>
+          </div>
 
         
 
 
         
     <div class="post-nav">
-      <div class="post-nav-item"></div>
       <div class="post-nav-item">
-    <a href="/2021/03/29/lab1-mapReduce/" rel="next" title="lab1-mapReduce">
-      lab1-mapReduce <i class="fa fa-chevron-right"></i>
+    <a href="/2022/01/18/lab3-query-execution/" rel="prev" title="lab3-query execution">
+      <i class="fa fa-chevron-left"></i> lab3-query execution
     </a></div>
+      <div class="post-nav-item"></div>
     </div>
       </footer>
     
@@ -351,7 +359,7 @@
 
       <!--noindex-->
       <div class="post-toc-wrap sidebar-panel">
-          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#hexo-notes"><span class="nav-number">1.</span> <span class="nav-text">hexo notes</span></a></li></ol></div>
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#TASK-1-LOCK-MANAGER"><span class="nav-number">1.</span> <span class="nav-text">TASK #1 - LOCK MANAGER</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#TASK-2-DEADLOCK-PREVENTION"><span class="nav-number">2.</span> <span class="nav-text">TASK #2 - DEADLOCK PREVENTION</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#TASK-3-CONCURRENT-QUERY-EXECUTION"><span class="nav-number">3.</span> <span class="nav-text">TASK #3 - CONCURRENT QUERY EXECUTION</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%AE%9E%E9%AA%8C%E7%BB%93%E6%9E%9C"><span class="nav-number">4.</span> <span class="nav-text">实验结果</span></a></li></ol></div>
       </div>
       <!--/noindex-->
 
